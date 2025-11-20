@@ -104,6 +104,59 @@
             font-family: monospace;
             font-size: 12px;
         }
+        
+        /* Toast Notification Styles */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+        .toast {
+            background: white;
+            padding: 15px 20px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 300px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .toast.error {
+            border-left: 4px solid #dc3545;
+        }
+        .toast.warning {
+            border-left: 4px solid #ffc107;
+        }
+        .toast.success {
+            border-left: 4px solid #28a745;
+        }
+        .toast-icon {
+            font-size: 20px;
+        }
+        .toast-content {
+            flex: 1;
+        }
+        .toast-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .toast-message {
+            font-size: 14px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -146,11 +199,19 @@
         <div id="log"></div>
     </div>
 
+    <div class="toast-container" id="toastContainer"></div>
+
     <script>
         const logDiv = document.getElementById('log');
         const statusDiv = document.getElementById('status');
         const ADMIN_TOKEN = 'admin-secret-token';
         let ws;
+        
+        // Reconnection strategy variables
+        let reconnectAttempts = 0;
+        let reconnectTimeout = null;
+        const MAX_RECONNECT_DELAY = 30000; // 30 seconds max
+        const INITIAL_RECONNECT_DELAY = 1000; // 1 second initial
 
         function connect() {
             ws = new WebSocket(`ws://localhost:8080/admin?token=${ADMIN_TOKEN}`);
@@ -160,6 +221,12 @@
                 statusDiv.textContent = 'Connected to Admin Channel';
                 statusDiv.className = 'connected';
                 addLog('Connected to admin channel');
+                
+                // Reset reconnection attempts on successful connection
+                reconnectAttempts = 0;
+                
+                // Show success toast
+                showToast('Connected', 'Successfully connected to admin channel', 'success');
             };
 
             ws.onmessage = (event) => {
@@ -179,14 +246,77 @@
                 statusDiv.className = 'disconnected';
                 addLog('Disconnected from admin channel');
                 
-                // Attempt to reconnect after 3 seconds
-                setTimeout(connect, 3000);
+                // Show disconnection toast
+                showToast('Disconnected', 'Connection to admin channel lost', 'error');
+                
+                // Attempt to reconnect with exponential backoff
+                scheduleReconnect();
             };
 
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
                 addLog('Connection error occurred');
             };
+        }
+
+        function scheduleReconnect() {
+            // Clear any existing reconnect timeout
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+
+            // Calculate delay using exponential backoff: delay = min(initialDelay * 2^attempts, maxDelay)
+            const delay = Math.min(
+                INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
+                MAX_RECONNECT_DELAY
+            );
+
+            reconnectAttempts++;
+            
+            console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts})...`);
+            
+            // Show reconnection toast
+            showToast(
+                'Reconnecting...',
+                `Attempting to reconnect in ${(delay / 1000).toFixed(1)}s (attempt ${reconnectAttempts})`,
+                'warning'
+            );
+
+            reconnectTimeout = setTimeout(() => {
+                console.log('Attempting to reconnect...');
+                connect();
+            }, delay);
+        }
+
+        function showToast(title, message, type = 'success') {
+            const toastContainer = document.getElementById('toastContainer');
+            
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icons = {
+                success: '✓',
+                error: '✗',
+                warning: '⚠'
+            };
+            
+            toast.innerHTML = `
+                <div class="toast-icon">${icons[type] || '•'}</div>
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${message}</div>
+                </div>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // Auto-remove toast after 5 seconds
+            setTimeout(() => {
+                toast.style.animation = 'slideIn 0.3s ease-out reverse';
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }, 5000);
         }
 
         function sendMessage() {

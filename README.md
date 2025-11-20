@@ -9,6 +9,7 @@ A Node.js WebSocket server using the `ws` library that provides two separate cha
 - **API Server**: REST API for news management and webhook integration
 - **Image Carousel**: Remote-controlled image carousel with SVG images
 - **News System**: Real-time news updates with badge notifications
+- **Auto-Reconnection**: Exponential backoff reconnection strategy with toast notifications
 - **Message Types**:
   - `pageAction`: Triggers page actions (image changes, news updates)
   - `messageToAll`: Broadcasts messages to all public clients
@@ -152,6 +153,85 @@ Three HTML test clients are provided:
    - Click "Trigger News Update" button
    - Watch the public client show a red badge and fetch news
    - News items are stacked in the news section
+
+## Automatic Reconnection Testing
+
+Both the public and admin clients implement an **exponential backoff reconnection strategy** with visual toast notifications.
+
+### Reconnection Strategy
+
+- **Initial Delay**: 1 second
+- **Max Delay**: 30 seconds
+- **Algorithm**: `delay = min(1000ms × 2^attempts, 30000ms)`
+- **Backoff Sequence**: 1s → 2s → 4s → 8s → 16s → 30s (max)
+
+### Toast Notifications
+
+Clients display toast notifications for:
+- **Disconnected** (red) - When connection is lost
+- **Reconnecting** (yellow) - Shows countdown and attempt number
+- **Connected** (green) - When successfully reconnected
+
+### How to Test Reconnection
+
+1. **Start the servers and open clients:**
+   ```bash
+   # Terminal 1
+   npm start
+   
+   # Terminal 2
+   npm run start:api
+   ```
+   
+2. **Open the test clients in your browser:**
+   - `test-public-client.html`
+   - `test-admin-client.html`
+
+3. **Simulate disconnection:**
+   - In Terminal 1 (WebSocket server), press `Ctrl+C` to stop the server
+   - Watch the clients display:
+     - Red "Disconnected" toast
+     - Yellow "Reconnecting..." toasts with countdown
+
+4. **Observe reconnection attempts:**
+   - First attempt after 1 second
+   - Second attempt after 2 seconds
+   - Third attempt after 4 seconds
+   - And so on with exponential backoff
+
+5. **Restart the server:**
+   ```bash
+   npm start
+   ```
+
+6. **Watch automatic reconnection:**
+   - Clients will automatically reconnect on the next attempt
+   - Green "Connected" toast will appear
+   - Connection status will update to "Connected"
+   - Reconnection counter resets to 0
+
+### Expected Behavior
+
+**When server stops:**
+```
+[Toast] ✗ Disconnected - Connection to server lost
+[Toast] ⚠ Reconnecting... - Attempting to reconnect in 1.0s (attempt 1)
+[Toast] ⚠ Reconnecting... - Attempting to reconnect in 2.0s (attempt 2)
+[Toast] ⚠ Reconnecting... - Attempting to reconnect in 4.0s (attempt 3)
+...
+```
+
+**When server restarts:**
+```
+[Toast] ✓ Connected - Successfully connected to server
+```
+
+### Testing Tips
+
+- Keep browser console open to see detailed reconnection logs
+- Test with multiple client tabs to see synchronized reconnection
+- Try stopping/starting the server multiple times
+- Observe how the exponential backoff prevents server overload
 
 ## Security Note
 
