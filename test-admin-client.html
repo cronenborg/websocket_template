@@ -17,6 +17,37 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .client-counter {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+        .client-counter:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        .client-counter-icon {
+            font-size: 20px;
+        }
+        .client-counter-number {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .client-counter-label {
+            font-size: 12px;
+            opacity: 0.9;
         }
         h1 {
             color: #333;
@@ -161,6 +192,13 @@
 </head>
 <body>
     <div class="container">
+        <div class="client-counter" id="clientCounter">
+            <span class="client-counter-icon">👥</span>
+            <div>
+                <div class="client-counter-number" id="clientCount">0</div>
+                <div class="client-counter-label">Public Clients</div>
+            </div>
+        </div>
         <h1>Admin WebSocket Client</h1>
         <div id="status" class="disconnected">Disconnected</div>
         
@@ -233,7 +271,14 @@
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Received:', data);
-                    addLog('Server response: ' + JSON.stringify(data));
+                    
+                    // Handle client count updates
+                    if (data.type === 'clientCount') {
+                        updateClientCount(data.count);
+                        addLog(`Public clients connected: ${data.count}`);
+                    } else {
+                        addLog('Server response: ' + JSON.stringify(data));
+                    }
                 } catch (error) {
                     console.error('Error parsing message:', error);
                     addLog('Error: ' + event.data);
@@ -394,6 +439,20 @@
 
             ws.send(JSON.stringify(message));
             addLog(`Sent imageChange to ${imageName}`);
+        }
+
+        function updateClientCount(count) {
+            const clientCountElement = document.getElementById('clientCount');
+            const clientCounterElement = document.getElementById('clientCounter');
+            
+            // Update the number
+            clientCountElement.textContent = count;
+            
+            // Add a pulse animation
+            clientCounterElement.style.animation = 'none';
+            setTimeout(() => {
+                clientCounterElement.style.animation = 'pulse 0.5s ease-in-out';
+            }, 10);
         }
 
         function addLog(message) {

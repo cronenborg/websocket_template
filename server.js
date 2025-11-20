@@ -15,10 +15,29 @@ const adminClients = new Set();
 // Admin authentication token (in production, use proper authentication)
 const ADMIN_TOKEN = 'admin-secret-token';
 
+// Function to broadcast client count to all admin clients
+function broadcastClientCount() {
+    const count = publicClients.size;
+    const message = JSON.stringify({
+        type: 'clientCount',
+        count: count
+    });
+    
+    adminClients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(message);
+        }
+    });
+    console.log(`Broadcasted client count to admins: ${count}`);
+}
+
 // Handle public channel connections
 publicWss.on('connection', (ws) => {
     console.log('New public client connected');
     publicClients.add(ws);
+    
+    // Notify admins of new client count
+    broadcastClientCount();
 
     ws.on('message', (message) => {
         try {
@@ -33,6 +52,9 @@ publicWss.on('connection', (ws) => {
     ws.on('close', () => {
         console.log('Public client disconnected');
         publicClients.delete(ws);
+        
+        // Notify admins of updated client count
+        broadcastClientCount();
     });
 
     ws.on('error', (error) => {
@@ -88,10 +110,16 @@ adminWss.on('connection', (ws) => {
         console.error('Admin client error:', error);
     });
 
-    // Send welcome message
+    // Send welcome message with current client count
     ws.send(JSON.stringify({
         type: 'connected',
         message: 'Connected to admin channel'
+    }));
+    
+    // Send current client count immediately
+    ws.send(JSON.stringify({
+        type: 'clientCount',
+        count: publicClients.size
     }));
 });
 
