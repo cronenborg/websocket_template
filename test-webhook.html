@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webhook Tester</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        button {
+            padding: 12px 24px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            margin: 10px 0;
+        }
+        button:hover {
+            background-color: #c82333;
+        }
+        .info {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+            border-left: 4px solid #007bff;
+        }
+        .log {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            padding: 5px;
+            margin: 2px 0;
+            border-left: 3px solid #28a745;
+        }
+        .log-entry.error {
+            border-left-color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>News Webhook Tester</h1>
+        
+        <div class="info">
+            <strong>How it works:</strong><br>
+            Click the button below to trigger a POST request to the webhook endpoint.
+            This will send a news update notification to all connected public clients.
+        </div>
+        
+        <button onclick="triggerWebhook()">🔔 Trigger News Update</button>
+        
+        <div class="info">
+            <strong>Endpoints:</strong><br>
+            GET: <code>http://localhost:3000/api/news</code><br>
+            POST: <code>http://localhost:3000/api/news/webhook</code>
+        </div>
+        
+        <h3>Activity Log:</h3>
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        async function triggerWebhook() {
+            addLog('Sending POST request to webhook...');
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/news/webhook', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        source: 'webhook-tester',
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                
+                const data = await response.json();
+                addLog(`✓ Success: ${data.message}`);
+                addLog('Check the public client to see the news update!');
+            } catch (error) {
+                addLog(`✗ Error: ${error.message}`, true);
+            }
+        }
+
+        function addLog(message, isError = false) {
+            const logDiv = document.getElementById('log');
+            const logEntry = document.createElement('div');
+            logEntry.className = isError ? 'log-entry error' : 'log-entry';
+            const timestamp = new Date().toLocaleTimeString();
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(logEntry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Add initial log
+        addLog('Webhook tester ready');
+    </script>
+</body>
+</html>
