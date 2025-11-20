@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Public WebSocket Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        #status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        /* Carousel Styles */
+        .carousel-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            overflow: hidden;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .carousel-wrapper {
+            display: flex;
+            transition: transform 0.5s ease-in-out;
+        }
+        .carousel-slide {
+            min-width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f0f0;
+        }
+        .carousel-slide img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .carousel-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .carousel-btn {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .carousel-btn:hover {
+            background-color: #0056b3;
+        }
+        .carousel-indicators {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #ccc;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .indicator.active {
+            background-color: #007bff;
+        }
+        .current-image {
+            text-align: center;
+            margin-top: 10px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        #messages {
+            border: 1px solid #ddd;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            background-color: #fafafa;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .message {
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            background-color: white;
+            border-left: 4px solid #007bff;
+        }
+        .message.action {
+            border-left-color: #28a745;
+        }
+        .message-type {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 0.85em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Public WebSocket Client</h1>
+        <div id="status" class="disconnected">Disconnected</div>
+        
+        <h2>Image Carousel</h2>
+        <div class="carousel-container">
+            <div class="carousel-wrapper" id="carouselWrapper">
+                <div class="carousel-slide">
+                    <img src="img1.svg" alt="Image 1" data-image="img1.svg">
+                </div>
+                <div class="carousel-slide">
+                    <img src="img2.svg" alt="Image 2" data-image="img2.svg">
+                </div>
+            </div>
+        </div>
+        
+        <div class="carousel-indicators">
+            <div class="indicator active" onclick="goToSlide(0)"></div>
+            <div class="indicator" onclick="goToSlide(1)"></div>
+        </div>
+        
+        <div class="current-image" id="currentImage">Current: img1.svg</div>
+        
+        <div class="carousel-controls">
+            <button class="carousel-btn" onclick="previousSlide()">← Previous</button>
+            <button class="carousel-btn" onclick="nextSlide()">Next →</button>
+        </div>
+        
+        <h2>Received Messages:</h2>
+        <div id="messages"></div>
+    </div>
+
+    <script>
+        const messagesDiv = document.getElementById('messages');
+        const statusDiv = document.getElementById('status');
+        const carouselWrapper = document.getElementById('carouselWrapper');
+        const currentImageDiv = document.getElementById('currentImage');
+        const indicators = document.querySelectorAll('.indicator');
+        
+        let ws;
+        let currentSlide = 0;
+        const totalSlides = 2;
+        const images = ['img1.svg', 'img2.svg'];
+
+        function connect() {
+            ws = new WebSocket('ws://localhost:8080/public');
+
+            ws.onopen = () => {
+                console.log('Connected to public channel');
+                statusDiv.textContent = 'Connected to Public Channel';
+                statusDiv.className = 'connected';
+                addMessage('System', 'Connected to server');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received:', data);
+                    
+                    if (data.type === 'pageAction') {
+                        handlePageAction(data.payload);
+                        addMessage('Page Action', JSON.stringify(data.payload, null, 2), true);
+                    } else if (data.type === 'messageToAll') {
+                        addMessage('Message To All', JSON.stringify(data.payload, null, 2));
+                    } else {
+                        addMessage(data.type || 'Unknown', JSON.stringify(data, null, 2));
+                    }
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                    addMessage('Error', event.data);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('Disconnected from public channel');
+                statusDiv.textContent = 'Disconnected';
+                statusDiv.className = 'disconnected';
+                addMessage('System', 'Disconnected from server');
+                
+                // Attempt to reconnect after 3 seconds
+                setTimeout(connect, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addMessage('Error', 'Connection error occurred');
+            };
+        }
+
+        function handlePageAction(payload) {
+            if (payload.action === 'imageChange' && payload.data) {
+                const imageName = payload.data;
+                const imageIndex = images.indexOf(imageName);
+                
+                if (imageIndex !== -1) {
+                    goToSlide(imageIndex);
+                    addMessage('Action Executed', `Switched to ${imageName}`, true);
+                } else {
+                    addMessage('Action Error', `Image ${imageName} not found`, true);
+                }
+            }
+        }
+
+        function goToSlide(index) {
+            if (index < 0 || index >= totalSlides) return;
+            
+            currentSlide = index;
+            const offset = -currentSlide * 100;
+            carouselWrapper.style.transform = `translateX(${offset}%)`;
+            
+            // Update indicators
+            indicators.forEach((indicator, i) => {
+                indicator.classList.toggle('active', i === currentSlide);
+            });
+            
+            // Update current image display
+            currentImageDiv.textContent = `Current: ${images[currentSlide]}`;
+        }
+
+        function nextSlide() {
+            goToSlide((currentSlide + 1) % totalSlides);
+        }
+
+        function previousSlide() {
+            goToSlide((currentSlide - 1 + totalSlides) % totalSlides);
+        }
+
+        function addMessage(type, content, isAction = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = isAction ? 'message action' : 'message';
+            
+            const timestamp = new Date().toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <div class="message-type">${type}</div>
+                <div class="timestamp">${timestamp}</div>
+                <pre style="margin: 5px 0; white-space: pre-wrap;">${content}</pre>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Connect on page load
+        connect();
+    </script>
+</body>
+</html>

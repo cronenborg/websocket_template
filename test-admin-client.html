@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin WebSocket Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        #status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .control-panel {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            resize: vertical;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        #log {
+            border: 1px solid #ddd;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            background-color: #fafafa;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            padding: 5px;
+            margin: 2px 0;
+            border-left: 3px solid #28a745;
+        }
+        .example {
+            background-color: #e7f3ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Admin WebSocket Client</h1>
+        <div id="status" class="disconnected">Disconnected</div>
+        
+        <div class="control-panel">
+            <h2>Send Messages to Public Clients</h2>
+            
+            <div class="form-group">
+                <label>Message Type:</label>
+                <select id="messageType" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ddd;">
+                    <option value="pageAction">pageAction</option>
+                    <option value="messageToAll">messageToAll</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Payload (JSON):</label>
+                <textarea id="payload" rows="6">{"action": "imageChange", "data": "img1.svg"}</textarea>
+                <div class="example">
+                    <strong>Examples:</strong><br>
+                    pageAction: {"action": "imageChange", "data": "img1.svg"}<br>
+                    pageAction: {"action": "navigate", "url": "/home"}<br>
+                    messageToAll: {"text": "Server maintenance in 5 minutes", "priority": "high"}
+                </div>
+            </div>
+            
+            <button class="btn-primary" onclick="sendMessage()">Send Message</button>
+            <button class="btn-secondary" onclick="sendPageAction()">Quick: Page Action</button>
+            <button class="btn-secondary" onclick="sendMessageToAll()">Quick: Message To All</button>
+            <hr style="margin: 15px 0;">
+            <h3>Image Control:</h3>
+            <button class="btn-secondary" onclick="changeImage('img1.svg')">Switch to Image 1</button>
+            <button class="btn-secondary" onclick="changeImage('img2.svg')">Switch to Image 2</button>
+        </div>
+        
+        <h2>Activity Log:</h2>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const logDiv = document.getElementById('log');
+        const statusDiv = document.getElementById('status');
+        const ADMIN_TOKEN = 'admin-secret-token';
+        let ws;
+
+        function connect() {
+            ws = new WebSocket(`ws://localhost:8080/admin?token=${ADMIN_TOKEN}`);
+
+            ws.onopen = () => {
+                console.log('Connected to admin channel');
+                statusDiv.textContent = 'Connected to Admin Channel';
+                statusDiv.className = 'connected';
+                addLog('Connected to admin channel');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received:', data);
+                    addLog('Server response: ' + JSON.stringify(data));
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                    addLog('Error: ' + event.data);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('Disconnected from admin channel');
+                statusDiv.textContent = 'Disconnected';
+                statusDiv.className = 'disconnected';
+                addLog('Disconnected from admin channel');
+                
+                // Attempt to reconnect after 3 seconds
+                setTimeout(connect, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addLog('Connection error occurred');
+            };
+        }
+
+        function sendMessage() {
+            if (ws.readyState !== WebSocket.OPEN) {
+                alert('Not connected to server');
+                return;
+            }
+
+            const messageType = document.getElementById('messageType').value;
+            const payloadText = document.getElementById('payload').value;
+
+            try {
+                const payload = JSON.parse(payloadText);
+                const message = {
+                    type: messageType,
+                    payload: payload
+                };
+
+                ws.send(JSON.stringify(message));
+                addLog(`Sent ${messageType}: ${JSON.stringify(payload)}`);
+            } catch (error) {
+                alert('Invalid JSON payload: ' + error.message);
+            }
+        }
+
+        function sendPageAction() {
+            if (ws.readyState !== WebSocket.OPEN) {
+                alert('Not connected to server');
+                return;
+            }
+
+            const message = {
+                type: 'pageAction',
+                payload: {
+                    action: 'refresh',
+                    timestamp: new Date().toISOString()
+                }
+            };
+
+            ws.send(JSON.stringify(message));
+            addLog('Sent pageAction: ' + JSON.stringify(message.payload));
+        }
+
+        function sendMessageToAll() {
+            if (ws.readyState !== WebSocket.OPEN) {
+                alert('Not connected to server');
+                return;
+            }
+
+            const message = {
+                type: 'messageToAll',
+                payload: {
+                    text: 'Hello from admin!',
+                    timestamp: new Date().toISOString()
+                }
+            };
+
+            ws.send(JSON.stringify(message));
+            addLog('Sent messageToAll: ' + JSON.stringify(message.payload));
+        }
+
+        function changeImage(imageName) {
+            if (ws.readyState !== WebSocket.OPEN) {
+                alert('Not connected to server');
+                return;
+            }
+
+            const message = {
+                type: 'pageAction',
+                payload: {
+                    action: 'imageChange',
+                    data: imageName
+                }
+            };
+
+            ws.send(JSON.stringify(message));
+            addLog(`Sent imageChange to ${imageName}`);
+        }
+
+        function addLog(message) {
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            const timestamp = new Date().toLocaleTimeString();
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(logEntry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Connect on page load
+        connect();
+    </script>
+</body>
+</html>
