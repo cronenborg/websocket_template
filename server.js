@@ -1,5 +1,11 @@
 const WebSocket = require('ws');
 const http = require('http');
+const crypto = require('crypto');
+
+// Function to generate unique client ID
+function generateClientId() {
+    return crypto.randomUUID();
+}
 
 // Create HTTP server
 const server = http.createServer();
@@ -33,7 +39,9 @@ function broadcastClientCount() {
 
 // Handle public channel connections
 publicWss.on('connection', (ws) => {
-    console.log('New public client connected');
+    // Assign unique ID to the client
+    ws.clientId = generateClientId();
+    console.log(`New public client connected with ID: ${ws.clientId}`);
     publicClients.add(ws);
     
     // Notify admins of new client count
@@ -42,6 +50,8 @@ publicWss.on('connection', (ws) => {
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
+            // Add client ID to the message
+            data.clientId = ws.clientId;
             console.log('Public client message:', data);
             // Public clients can only receive messages, not send to others
         } catch (error) {
@@ -50,7 +60,7 @@ publicWss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        console.log('Public client disconnected');
+        console.log(`Public client disconnected: ${ws.clientId}`);
         publicClients.delete(ws);
         
         // Notify admins of updated client count
@@ -58,62 +68,76 @@ publicWss.on('connection', (ws) => {
     });
 
     ws.on('error', (error) => {
-        console.error('Public client error:', error);
+        console.error(`Public client error (${ws.clientId}):`, error);
     });
 
-    // Send welcome message
+    // Send welcome message with client ID
     ws.send(JSON.stringify({
         type: 'connected',
-        message: 'Connected to public channel'
+        message: 'Connected to public channel',
+        clientId: ws.clientId
     }));
 });
 
 // Handle admin channel connections
 adminWss.on('connection', (ws) => {
-    console.log('New admin client connected');
+    // Assign unique ID to the admin client
+    ws.clientId = generateClientId();
+    console.log(`New admin client connected with ID: ${ws.clientId}`);
     adminClients.add(ws);
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-            console.log('Admin message received:', data);
+            
+            // IMPORTANT: Always use the server-assigned clientId from the WebSocket connection
+            // This ensures the message is correctly attributed to THIS specific admin
+            // and prevents any client-side spoofing of the clientId
+            const authenticatedClientId = ws.clientId;
+            
+            console.log(`Admin message received from ${authenticatedClientId}:`, data);
 
             // Handle different message types from admin
             if (data.type === 'pageAction') {
-                // Broadcast pageAction to all public clients
+                // Broadcast pageAction to all public clients with the authenticated admin ID
                 broadcastToPublic({
                     type: 'pageAction',
-                    payload: data.payload
+                    payload: data.payload,
+                    adminClientId: authenticatedClientId,
+                    timestamp: new Date().toISOString()
                 });
-                console.log('Broadcasted pageAction to public clients:', data.payload);
+                console.log(`Admin ${authenticatedClientId} broadcasted pageAction to public clients:`, data.payload);
             } else if (data.type === 'messageToAll') {
-                // Broadcast messageToAll to all public clients
+                // Broadcast messageToAll to all public clients with the authenticated admin ID
                 broadcastToPublic({
                     type: 'messageToAll',
-                    payload: data.payload
+                    payload: data.payload,
+                    adminClientId: authenticatedClientId,
+                    timestamp: new Date().toISOString()
                 });
-                console.log('Broadcasted messageToAll to public clients:', data.payload);
+                console.log(`Admin ${authenticatedClientId} broadcasted messageToAll to public clients:`, data.payload);
             } else {
-                console.log('Unknown admin message type:', data.type);
+                console.log(`Unknown admin message type from ${authenticatedClientId}:`, data.type);
             }
         } catch (error) {
-            console.error('Error parsing admin message:', error);
+            console.error(`Error parsing admin message from ${ws.clientId}:`, error);
         }
     });
 
     ws.on('close', () => {
-        console.log('Admin client disconnected');
+        console.log(`Admin client disconnected: ${ws.clientId}`);
         adminClients.delete(ws);
     });
 
     ws.on('error', (error) => {
-        console.error('Admin client error:', error);
+        console.error(`Admin client error (${ws.clientId}):`, error);
     });
 
-    // Send welcome message with current client count
+    // Send welcome message with client ID and current client count
     ws.send(JSON.stringify({
         type: 'connected',
-        message: 'Connected to admin channel'
+        message: 'Connected to admin channel',
+        clientId: ws.clientId
     }));
     
     // Send current client count immediately

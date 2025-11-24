@@ -244,6 +244,7 @@
         const statusDiv = document.getElementById('status');
         const ADMIN_TOKEN = 'admin-secret-token';
         let ws;
+        let myAdminId = null; // Store this admin's unique ID
         
         // Reconnection strategy variables
         let reconnectAttempts = 0;
@@ -271,6 +272,12 @@
                 try {
                     const data = JSON.parse(event.data);
                     console.log('Received:', data);
+                    
+                    // Store admin ID when connected
+                    if (data.type === 'connected' && data.clientId) {
+                        myAdminId = data.clientId;
+                        addLog(`My Admin ID: ${myAdminId}`);
+                    }
                     
                     // Handle client count updates
                     if (data.type === 'clientCount') {
@@ -415,6 +422,7 @@
                 type: 'messageToAll',
                 payload: {
                     text: 'Hello from admin!',
+                    adminId: myAdminId,
                     timestamp: new Date().toISOString()
                 }
             };
