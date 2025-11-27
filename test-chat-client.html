@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Public WebSocket Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        #status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        /* Carousel Styles */
+        .carousel-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin: 20px auto;
+            overflow: hidden;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .carousel-wrapper {
+            display: flex;
+            transition: transform 0.5s ease-in-out;
+        }
+        .carousel-slide {
+            min-width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f0f0;
+        }
+        .carousel-slide img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .carousel-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .carousel-btn {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .carousel-btn:hover {
+            background-color: #0056b3;
+        }
+        .carousel-indicators {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #ccc;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .indicator.active {
+            background-color: #007bff;
+        }
+        .current-image {
+            text-align: center;
+            margin-top: 10px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        /* News Section Styles */
+        .news-section {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        .news-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .news-badge {
+            display: none;
+            width: 12px;
+            height: 12px;
+            background-color: #dc3545;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        .news-badge.active {
+            display: inline-block;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .news-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .news-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .news-item h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 16px;
+        }
+        .news-item p {
+            margin: 0;
+            color: #666;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .news-timestamp {
+            color: #999;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+        .no-news {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+            font-style: italic;
+        }
+        
+        #messages {
+            border: 1px solid #ddd;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            background-color: #fafafa;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .message {
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            background-color: white;
+            border-left: 4px solid #007bff;
+        }
+        .message.action {
+            border-left-color: #28a745;
+        }
+        .message-type {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .timestamp {
+            color: #666;
+            font-size: 0.85em;
+        }
+        
+        /* Toast Notification Styles */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+        .toast {
+            background: white;
+            padding: 15px 20px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 300px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .toast.error {
+            border-left: 4px solid #dc3545;
+        }
+        .toast.warning {
+            border-left: 4px solid #ffc107;
+        }
+        .toast.success {
+            border-left: 4px solid #28a745;
+        }
+        .toast-icon {
+            font-size: 20px;
+        }
+        .toast-content {
+            flex: 1;
+        }
+        .toast-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .toast-message {
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Public WebSocket Client</h1>
+        <div id="status" class="disconnected">Disconnected</div>
+        
+        <h2>Image Carousel</h2>
+        <div class="carousel-container">
+            <div class="carousel-wrapper" id="carouselWrapper">
+                <div class="carousel-slide">
+                    <img src="img1.svg" alt="Image 1" data-image="img1.svg">
+                </div>
+                <div class="carousel-slide">
+                    <img src="img2.svg" alt="Image 2" data-image="img2.svg">
+                </div>
+            </div>
+        </div>
+        
+        <div class="carousel-indicators">
+            <div class="indicator active" onclick="goToSlide(0)"></div>
+            <div class="indicator" onclick="goToSlide(1)"></div>
+        </div>
+        
+        <div class="current-image" id="currentImage">Current: img1.svg</div>
+        
+        <div class="carousel-controls">
+            <button class="carousel-btn" onclick="previousSlide()">← Previous</button>
+            <button class="carousel-btn" onclick="nextSlide()">Next →</button>
+        </div>
+        
+        <div class="news-section">
+            <div class="news-header">
+                <h2 style="margin: 0;">News Updates</h2>
+                <span class="news-badge" id="newsBadge"></span>
+            </div>
+            <div class="news-list" id="newsList">
+                <div class="no-news">No news available yet</div>
+            </div>
+        </div>
+        
+        <h2>Received Messages:</h2>
+        <div id="messages"></div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        const messagesDiv = document.getElementById('messages');
+        const statusDiv = document.getElementById('status');
+        const carouselWrapper = document.getElementById('carouselWrapper');
+        const currentImageDiv = document.getElementById('currentImage');
+        const indicators = document.querySelectorAll('.indicator');
+        
+        let ws;
+        let currentSlide = 0;
+        const totalSlides = 2;
+        const images = ['img1.svg', 'img2.svg'];
+        
+        // Reconnection strategy variables
+        let reconnectAttempts = 0;
+        let reconnectTimeout = null;
+        const MAX_RECONNECT_DELAY = 30000; // 30 seconds max
+        const INITIAL_RECONNECT_DELAY = 1000; // 1 second initial
+
+        function connect() {
+            ws = new WebSocket('http://127.0.0.1:54782/public');
+
+            ws.onopen = () => {
+                console.log('Connected to public channel');
+                statusDiv.textContent = 'Connected to Public Channel';
+                statusDiv.className = 'connected';
+                addMessage('System', 'Connected to server');
+                
+                // Reset reconnection attempts on successful connection
+                reconnectAttempts = 0;
+                
+                // Show success toast
+                showToast('Connected', 'Successfully connected to server', 'success');
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('Received:', data);
+                    
+                    if (data.type === 'pageAction') {
+                        handlePageAction(data.payload);
+                        addMessage('Page Action', JSON.stringify(data.payload, null, 2), true);
+                    } else if (data.type === 'messageToAll') {
+                        addMessage('Message To All', JSON.stringify(data.payload, null, 2));
+                    } else {
+                        addMessage(data.type || 'Unknown', JSON.stringify(data, null, 2));
+                    }
+                } catch (error) {
+                    console.error('Error parsing message:', error);
+                    addMessage('Error', event.data);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('Disconnected from public channel');
+                statusDiv.textContent = 'Disconnected';
+                statusDiv.className = 'disconnected';
+                addMessage('System', 'Disconnected from server');
+                
+                // Show disconnection toast
+                showToast('Disconnected', 'Connection to server lost', 'error');
+                
+                // Attempt to reconnect with exponential backoff
+                scheduleReconnect();
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addMessage('Error', 'Connection error occurred');
+            };
+        }
+
+        function scheduleReconnect() {
+            // Clear any existing reconnect timeout
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+
+            // Calculate delay using exponential backoff: delay = min(initialDelay * 2^attempts, maxDelay)
+            const delay = Math.min(
+                INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
+                MAX_RECONNECT_DELAY
+            );
+
+            reconnectAttempts++;
+            
+            console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts})...`);
+            
+            // Show reconnection toast
+            showToast(
+                'Reconnecting...',
+                `Attempting to reconnect in ${(delay / 1000).toFixed(1)}s (attempt ${reconnectAttempts})`,
+                'warning'
+            );
+
+            reconnectTimeout = setTimeout(() => {
+                console.log('Attempting to reconnect...');
+                connect();
+            }, delay);
+        }
+
+        function showToast(title, message, type = 'success') {
+            const toastContainer = document.getElementById('toastContainer');
+            
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            
+            const icons = {
+                success: '✓',
+                error: '✗',
+                warning: '⚠'
+            };
+            
+            toast.innerHTML = `
+                <div class="toast-icon">${icons[type] || '•'}</div>
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-message">${message}</div>
+                </div>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // Auto-remove toast after 5 seconds
+            setTimeout(() => {
+                toast.style.animation = 'slideIn 0.3s ease-out reverse';
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }, 5000);
+        }
+
+        function handlePageAction(payload) {
+            if (payload.action === 'imageChange' && payload.data) {
+                const imageName = payload.data;
+                const imageIndex = images.indexOf(imageName);
+                
+                if (imageIndex !== -1) {
+                    goToSlide(imageIndex);
+                    addMessage('Action Executed', `Switched to ${imageName}`, true);
+                } else {
+                    addMessage('Action Error', `Image ${imageName} not found`, true);
+                }
+            } else if (payload.action === 'updateNews') {
+                handleNewsUpdate();
+            }
+        }
+
+        async function handleNewsUpdate() {
+            // Show badge
+            const badge = document.getElementById('newsBadge');
+            badge.classList.add('active');
+            
+            addMessage('News Update', 'New news available!', true);
+            
+            // Fetch news from API
+            try {
+                const response = await fetch('http://localhost:3000/api/news');
+                const newsData = await response.json();
+                
+                // Add news to the list
+                addNewsItem(newsData);
+                
+                // Hide badge after 3 seconds
+                setTimeout(() => {
+                    badge.classList.remove('active');
+                }, 3000);
+            } catch (error) {
+                console.error('Error fetching news:', error);
+                addMessage('Error', 'Failed to fetch news', true);
+            }
+        }
+
+        function addNewsItem(newsData) {
+            const newsList = document.getElementById('newsList');
+            
+            // Remove "no news" message if present
+            const noNews = newsList.querySelector('.no-news');
+            if (noNews) {
+                noNews.remove();
+            }
+            
+            // Create news item
+            const newsItem = document.createElement('div');
+            newsItem.className = 'news-item';
+            
+            const timestamp = new Date().toLocaleString();
+            newsItem.innerHTML = `
+                <h3>${newsData.title}</h3>
+                <p>${newsData.description}</p>
+                <div class="news-timestamp">Received: ${timestamp}</div>
+            `;
+            
+            // Add to top of list
+            newsList.insertBefore(newsItem, newsList.firstChild);
+        }
+
+        function goToSlide(index) {
+            if (index < 0 || index >= totalSlides) return;
+            
+            currentSlide = index;
+            const offset = -currentSlide * 100;
+            carouselWrapper.style.transform = `translateX(${offset}%)`;
+            
+            // Update indicators
+            indicators.forEach((indicator, i) => {
+                indicator.classList.toggle('active', i === currentSlide);
+            });
+            
+            // Update current image display
+            currentImageDiv.textContent = `Current: ${images[currentSlide]}`;
+        }
+
+        function nextSlide() {
+            goToSlide((currentSlide + 1) % totalSlides);
+        }
+
+        function previousSlide() {
+            goToSlide((currentSlide - 1 + totalSlides) % totalSlides);
+        }
+
+        function addMessage(type, content, isAction = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = isAction ? 'message action' : 'message';
+            
+            const timestamp = new Date().toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <div class="message-type">${type}</div>
+                <div class="timestamp">${timestamp}</div>
+                <pre style="margin: 5px 0; white-space: pre-wrap;">${content}</pre>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Connect on page load
+        connect();
+    </script>
+</body>
+</html>

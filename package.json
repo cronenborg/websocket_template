@@ -8,10 +8,18 @@
     "start:api": "node api-server.js",
     "start:all": "node server.js & node api-server.js"
   },
-  "keywords": ["websocket", "ws", "server"],
+  "keywords": [
+    "websocket",
+    "uWebSockets",
+    "server"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "ioredis": "^5.8.2",
+    "os": "^0.1.2",
+    "util": "^0.12.5",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.49.0",
     "ws": "^8.14.2"
   }
 }

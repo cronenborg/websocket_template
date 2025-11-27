@@ -1,0 +1,72 @@
+# --- REDIS (The "Broker") ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+spec:
+  ports:
+  - port: 6379
+    targetPort: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:alpine
+        ports:
+        - containerPort: 6379
+
+---
+# --- UWEBSOCKETS APP (The "Cluster") ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: uws-service
+spec:
+  type: LoadBalancer 
+  selector:
+    app: uws-cluster
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uws-cluster
+spec:
+  replicas: 2  # <--- HERE IS YOUR 2 POD REQUIREMENT
+  selector:
+    matchLabels:
+      app: uws-cluster
+  template:
+    metadata:
+      labels:
+        app: uws-cluster
+    spec:
+      containers:
+      - name: uws-node
+        image: local/uws-server:latest # Ensure imagePullPolicy is correct for local
+        imagePullPolicy: Never        # Important for Minikube local images
+        ports:
+        - containerPort: 8080
+        env:
+        - name: REDIS_URL
+          value: "redis://redis-service:6379" # Points to the K8s Service above
+        resources:
+          limits:
+            memory: "256Mi"
+            cpu: "500m"

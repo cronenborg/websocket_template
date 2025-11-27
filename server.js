@@ -1,5 +1,4 @@
-const WebSocket = require('ws');
-const http = require('http');
+const uWS = require('uWebSockets.js');
 const crypto = require('crypto');
 
 // Function to generate unique client ID
@@ -7,16 +6,9 @@ function generateClientId() {
     return crypto.randomUUID();
 }
 
-// Create HTTP server
-const server = http.createServer();
-
-// Create two WebSocket servers on different paths
-const publicWss = new WebSocket.Server({ noServer: true });
-const adminWss = new WebSocket.Server({ noServer: true });
-
 // Store connected clients
-const publicClients = new Set();
-const adminClients = new Set();
+const publicClients = new Map();
+const adminClients = new Map();
 
 // Admin authentication token (in production, use proper authentication)
 const ADMIN_TOKEN = 'admin-secret-token';
@@ -30,26 +22,51 @@ function broadcastClientCount() {
     });
     
     adminClients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
-        }
+        client.send(message);
     });
     console.log(`Broadcasted client count to admins: ${count}`);
 }
 
-// Handle public channel connections
-publicWss.on('connection', (ws) => {
-    // Assign unique ID to the client
-    ws.clientId = generateClientId();
-    console.log(`New public client connected with ID: ${ws.clientId}`);
-    publicClients.add(ws);
-    
-    // Notify admins of new client count
-    broadcastClientCount();
+// Function to broadcast messages to all public clients
+function broadcastToPublic(message) {
+    const messageStr = JSON.stringify(message);
+    publicClients.forEach((client) => {
+        client.send(messageStr);
+    });
+}
 
-    ws.on('message', (message) => {
+// Create uWebSocket app
+const app = uWS.App();
+
+// Public WebSocket endpoint
+app.ws('/public', {
+    /* Options */
+    compression: uWS.SHARED_COMPRESSOR,
+    maxPayloadLength: 16 * 1024 * 1024,
+    idleTimeout: 60,
+    
+    /* Handlers */
+    open: (ws) => {
+        // Assign unique ID to the client
+        const clientId = generateClientId();
+        ws.clientId = clientId;
+        console.log(`New public client connected with ID: ${clientId}`);
+        publicClients.set(clientId, ws);
+        
+        // Notify admins of new client count
+        broadcastClientCount();
+
+        // Send welcome message with client ID
+        ws.send(JSON.stringify({
+            type: 'connected',
+            message: 'Connected to public channel',
+            clientId: clientId
+        }));
+    },
+    
+    message: (ws, message, isBinary) => {
         try {
-            const data = JSON.parse(message);
+            const data = JSON.parse(Buffer.from(message).toString());
             // Add client ID to the message
             data.clientId = ws.clientId;
             console.log('Public client message:', data);
@@ -57,38 +74,69 @@ publicWss.on('connection', (ws) => {
         } catch (error) {
             console.error('Error parsing public message:', error);
         }
-    });
-
-    ws.on('close', () => {
+    },
+    
+    close: (ws, code, message) => {
         console.log(`Public client disconnected: ${ws.clientId}`);
-        publicClients.delete(ws);
+        publicClients.delete(ws.clientId);
         
         // Notify admins of updated client count
         broadcastClientCount();
-    });
-
-    ws.on('error', (error) => {
-        console.error(`Public client error (${ws.clientId}):`, error);
-    });
-
-    // Send welcome message with client ID
-    ws.send(JSON.stringify({
-        type: 'connected',
-        message: 'Connected to public channel',
-        clientId: ws.clientId
-    }));
+    }
 });
 
-// Handle admin channel connections
-adminWss.on('connection', (ws) => {
-    // Assign unique ID to the admin client
-    ws.clientId = generateClientId();
-    console.log(`New admin client connected with ID: ${ws.clientId}`);
-    adminClients.add(ws);
+// Admin WebSocket endpoint
+app.ws('/admin', {
+    /* Options */
+    compression: uWS.SHARED_COMPRESSOR,
+    maxPayloadLength: 16 * 1024 * 1024,
+    idleTimeout: 60,
+    
+    /* Handlers */
+    upgrade: (res, req, context) => {
+        // Check for admin authentication
+        const token = req.getQuery('token');
+        
+        if (token === ADMIN_TOKEN) {
+            // Upgrade to WebSocket
+            res.upgrade(
+                { url: req.getUrl() },
+                req.getHeader('sec-websocket-key'),
+                req.getHeader('sec-websocket-protocol'),
+                req.getHeader('sec-websocket-extensions'),
+                context
+            );
+        } else {
+            // Reject unauthorized connection
+            res.writeStatus('401 Unauthorized').end('Unauthorized');
+            console.log('Unauthorized admin connection attempt');
+        }
+    },
+    
+    open: (ws) => {
+        // Assign unique ID to the admin client
+        const clientId = generateClientId();
+        ws.clientId = clientId;
+        console.log(`New admin client connected with ID: ${clientId}`);
+        adminClients.set(clientId, ws);
 
-    ws.on('message', (message) => {
+        // Send welcome message with client ID and current client count
+        ws.send(JSON.stringify({
+            type: 'connected',
+            message: 'Connected to admin channel',
+            clientId: clientId
+        }));
+        
+        // Send current client count immediately
+        ws.send(JSON.stringify({
+            type: 'clientCount',
+            count: publicClients.size
+        }));
+    },
+    
+    message: (ws, message, isBinary) => {
         try {
-            const data = JSON.parse(message);
+            const data = JSON.parse(Buffer.from(message).toString());
             
             // IMPORTANT: Always use the server-assigned clientId from the WebSocket connection
             // This ensures the message is correctly attributed to THIS specific admin
@@ -122,80 +170,25 @@ adminWss.on('connection', (ws) => {
         } catch (error) {
             console.error(`Error parsing admin message from ${ws.clientId}:`, error);
         }
-    });
-
-    ws.on('close', () => {
-        console.log(`Admin client disconnected: ${ws.clientId}`);
-        adminClients.delete(ws);
-    });
-
-    ws.on('error', (error) => {
-        console.error(`Admin client error (${ws.clientId}):`, error);
-    });
-
-    // Send welcome message with client ID and current client count
-    ws.send(JSON.stringify({
-        type: 'connected',
-        message: 'Connected to admin channel',
-        clientId: ws.clientId
-    }));
+    },
     
-    // Send current client count immediately
-    ws.send(JSON.stringify({
-        type: 'clientCount',
-        count: publicClients.size
-    }));
-});
-
-// Function to broadcast messages to all public clients
-function broadcastToPublic(message) {
-    const messageStr = JSON.stringify(message);
-    publicClients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(messageStr);
-        }
-    });
-}
-
-// Handle upgrade requests and route to appropriate WebSocket server
-server.on('upgrade', (request, socket, head) => {
-    const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
-
-    if (pathname === '/public') {
-        // Route to public channel
-        publicWss.handleUpgrade(request, socket, head, (ws) => {
-            publicWss.emit('connection', ws, request);
-        });
-    } else if (pathname === '/admin') {
-        // Check for admin authentication
-        const url = new URL(request.url, `http://${request.headers.host}`);
-        const token = url.searchParams.get('token');
-
-        if (token === ADMIN_TOKEN) {
-            // Route to admin channel
-            adminWss.handleUpgrade(request, socket, head, (ws) => {
-                adminWss.emit('connection', ws, request);
-            });
-        } else {
-            // Reject unauthorized connection
-            socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-            socket.destroy();
-            console.log('Unauthorized admin connection attempt');
-        }
-    } else {
-        // Unknown path
-        socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
-        socket.destroy();
+    close: (ws, code, message) => {
+        console.log(`Admin client disconnected: ${ws.clientId}`);
+        adminClients.delete(ws.clientId);
     }
 });
 
 // Start the server
 const PORT = 8080;
-server.listen(PORT, () => {
-    console.log(`WebSocket server is running on ws://localhost:${PORT}`);
-    console.log(`Public channel: ws://localhost:${PORT}/public`);
-    console.log(`Admin channel: ws://localhost:${PORT}/admin?token=${ADMIN_TOKEN}`);
-    console.log('\nAdmin can send messages with types:');
-    console.log('  - "pageAction" with payload');
-    console.log('  - "messageToAll" with payload');
+app.listen(PORT, (listenSocket) => {
+    if (listenSocket) {
+        console.log(`WebSocket server is running on ws://localhost:${PORT}`);
+        console.log(`Public channel: ws://localhost:${PORT}/public`);
+        console.log(`Admin channel: ws://localhost:${PORT}/admin?token=${ADMIN_TOKEN}`);
+        console.log('\nAdmin can send messages with types:');
+        console.log('  - "pageAction" with payload');
+        console.log('  - "messageToAll" with payload');
+    } else {
+        console.error(`Failed to listen on port ${PORT}`);
+    }
 });

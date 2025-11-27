@@ -59,6 +59,7 @@ const apiServer = http.createServer((req, res) => {
 });
 
 // WebSocket client to connect to admin channel
+// Note: Using 'ws' library for client as uWebSockets.js is server-only
 let adminWs = null;
 const ADMIN_TOKEN = 'admin-secret-token';
 
